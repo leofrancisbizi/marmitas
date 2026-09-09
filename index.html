@@ -919,7 +919,30 @@ function bindLoginEvents(){
   });
 }
 
+// render() recria o DOM inteiro a cada chamada — inclusive a cada tecla digitada
+// nos campos do modal. Sem isto o input em foco é destruído no meio da digitação e
+// o cursor volta para o começo. Guarda quem estava focado e devolve depois.
 function render(){
+  const ativo = document.activeElement;
+  const focoId = (ativo && ativo.id) || null;
+  let selIni = null, selFim = null;
+  if(focoId){
+    // campos number/date/email não expõem seleção em alguns navegadores
+    try{ selIni = ativo.selectionStart; selFim = ativo.selectionEnd; }catch(e){}
+  }
+
+  renderDOM();
+
+  if(!focoId) return;
+  const novo = document.getElementById(focoId);
+  if(!novo || novo === document.activeElement) return;
+  novo.focus();
+  if(selIni !== null){
+    try{ novo.setSelectionRange(selIni, selFim); }catch(e){}
+  }
+}
+
+function renderDOM(){
   const app = document.getElementById("app");
   if(ui.loading){
     app.innerHTML = `<div class="loading-screen"><div class="spinner"></div><p>Carregando dados da marmitaria…</p></div>`;
@@ -1518,10 +1541,7 @@ function bindGlobalEvents(){
   if(search){
     search.addEventListener("input", ()=>{
       ui.ingredienteSearch = search.value;
-      const pos = search.selectionStart;
       render();
-      const el2 = document.getElementById("ingr-search");
-      if(el2){ el2.focus(); el2.setSelectionRange(pos,pos); }
     });
   }
 
@@ -1548,8 +1568,7 @@ function syncDraftFromForm(skipRender){
 }
 
 function updateFooterOnly(){
-  const val = document.querySelector(".modal-foot")?.previousElementSibling?.querySelector(".mono");
-  // simplest reliable approach: just re-render whole modal (cheap enough)
+  // re-renderiza tudo para recalcular o total; render() cuida de manter o foco
   const scrollPos = document.querySelector(".modal-body")?.scrollTop || 0;
   render();
   const mb = document.querySelector(".modal-body");
