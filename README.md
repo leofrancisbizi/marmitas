@@ -1,127 +1,179 @@
 # Marcia Bizi · Marmitas Fit
 
 Sistema de controle de pedidos, dashboard e custos para a marmitaria da Márcia.
-Site estático (HTML + CSS + JS puro, sem build) que usa o **Supabase** como banco de dados,
-com sincronização em tempo real entre dispositivos.
 
-## Como os dados são salvos
-
-Os dados (pedidos, ingredientes, receitas) ficam salvos numa tabela no seu projeto Supabase.
-Isso significa:
-
-- **Sincronização em tempo real entre qualquer dispositivo** que abra o link do site —
-  computador, celular, quantos navegadores forem, todos veem os mesmos dados, atualizando
-  sozinhos.
-- Sem login para quem acessa o site — a conexão com o banco usa uma chave pública (anon key)
-  embutida no próprio código, então qualquer pessoa com o link já usa o app normalmente.
-- **Atenção de segurança**: como não há autenticação de usuário, qualquer pessoa que tiver o
-  link do site (e souber olhar o código-fonte da página) técnicamente consegue ler e escrever
-  nos dados. Para um controle interno de uma marmitaria pequena isso costuma ser um risco
-  aceitável, mas não é um app com "contas de usuário" — é um quadro compartilhado, tipo um
-  Google Sheets aberto por link. Se um dia isso virar um problema, dá para adicionar
-  autenticação real do Supabase (fora do escopo deste projeto).
-
-## Passo 1 — Criar o projeto no Supabase
-
-1. Crie uma conta gratuita em [supabase.com](https://supabase.com).
-2. Clique em **New Project**, escolha um nome e uma senha de banco (guarde essa senha, mas
-   ela não é usada neste app), e aguarde o projeto ser criado (leva ~2 minutos).
-3. No menu lateral, vá em **SQL Editor** → **New query** e cole o SQL abaixo, depois clique
-   em **Run**:
-
-   ```sql
-   create table app_data (
-     key text primary key,
-     value jsonb not null,
-     updated_at timestamptz default now()
-   );
-
-   alter table app_data enable row level security;
-
-   create policy "permitir tudo (app interno sem login)"
-     on app_data for all
-     using (true)
-     with check (true);
-
-   -- necessário para a sincronização em tempo real funcionar
-   alter publication supabase_realtime add table app_data;
-   ```
-
-4. Vá em **Project Settings → API**. Você vai precisar de dois valores dessa página:
-   - **Project URL** (algo como `https://xxxxxxxxxxxx.supabase.co`)
-   - **anon public key** (uma chave longa, começando geralmente com `eyJ...`)
-
-## Passo 2 — Conectar o site ao seu projeto
-
-Abra o arquivo `index.html` deste projeto, procure por estas duas linhas perto do início do
-`<script>` (use Ctrl+F / Cmd+F):
-
-```js
-const SUPABASE_URL = "SUA_SUPABASE_URL_AQUI";
-const SUPABASE_ANON_KEY = "SUA_SUPABASE_ANON_KEY_AQUI";
-```
-
-Substitua pelos valores que você copiou no passo anterior:
-
-```js
-const SUPABASE_URL = "https://xxxxxxxxxxxx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJ....................";
-```
-
-Salve o arquivo. Se abrir sem preencher essas duas linhas, o site mostra uma tela avisando
-que a configuração está pendente, em vez de quebrar.
-
-## Passo 3 — Colocar no ar (GitHub + Vercel)
-
-### Criar o repositório no GitHub
-
-1. Crie uma conta no [github.com](https://github.com) se ainda não tiver.
-2. Clique em **New repository**, dê um nome (ex: `marmitas-marcia-bizi`) e clique em
-   **Create repository**.
-3. No seu computador, dentro desta pasta (já com as chaves do Supabase preenchidas no
-   `index.html`), rode:
-
-   ```bash
-   git init
-   git add .
-   git commit -m "Primeira versão do sistema de pedidos"
-   git branch -M main
-   git remote add origin https://github.com/SEU-USUARIO/marmitas-marcia-bizi.git
-   git push -u origin main
-   ```
-
-### Publicar na Vercel
-
-1. Crie uma conta em [vercel.com](https://vercel.com) (dá para entrar direto com GitHub).
-2. Clique em **Add New… → Project** e selecione o repositório que você acabou de criar.
-3. A Vercel detecta automaticamente que é um site estático — não precisa mudar nenhuma
-   configuração. Clique em **Deploy**.
-4. Em menos de um minuto você recebe um link definitivo, tipo
-   `https://marmitas-marcia-bizi.vercel.app`.
-
-Qualquer atualização que você fizer no `index.html` e enviar (`git push`) é publicada
-automaticamente pela Vercel em segundos.
-
-## Backup
-
-Mesmo com o Supabase, o site tem dois botões no topo (ícones de download/upload) para
-exportar todos os dados num arquivo `.json` e importar de volta — útil como cópia de
-segurança extra ou para migrar os dados para outro projeto Supabase no futuro.
-
-## Estrutura do projeto
+Site estático (HTML + CSS + JS puro, **sem build, sem npm, sem framework**) que usa o
+**Supabase** como banco de dados e como login, com sincronização em tempo real entre
+dispositivos.
 
 ```
 .
-├── index.html   ← todo o site (HTML + CSS + JS em um único arquivo)
-└── README.md    ← este arquivo
+├── index.html            ← o site inteiro (HTML + CSS + JS)
+├── config.js             ← as 2 chaves do seu projeto Supabase (você preenche)
+├── supabase/schema.sql   ← o SQL do banco (você roda uma vez)
+└── README.md             ← este arquivo
 ```
+
+## Como funciona a segurança
+
+O site é público na internet, mas **os dados não**:
+
+- **Ninguém entra sem login.** A tela inicial pede e-mail e senha. Sem sessão válida o
+  app nem chega a montar a tela.
+- **Ninguém se cadastra sozinho.** O *Email signup* fica **desligado** no painel
+  (Passo 4). Essa é a trava que importa: ela é aplicada pelo servidor do Supabase, então
+  vale mesmo para quem chame a API direto, sem passar pelo site. Contas só existem se
+  você criar na mão.
+- **O banco recusa quem não está logado.** As policies de RLS em `supabase/schema.sql`
+  liberam leitura e escrita apenas para a role `authenticated`. Mesmo que alguém copie a
+  chave que está no `config.js` (ela é pública por natureza), sem uma sessão válida o
+  Postgres devolve vazio. Apagar linhas ninguém pode — não existe policy de DELETE.
+
+Isso é o suficiente para um controle interno. Não é um sistema com perfis, permissões
+diferentes por usuário ou auditoria — todo mundo que entra vê e edita tudo.
+
+---
+
+## Passo 1 — Criar o projeto no Supabase
+
+> A sua organização atual (Nitro) está no plano Pro, onde cada projeto novo custa
+> US$ 10/mês. Por isso o certo aqui é criar uma **organização nova**, no plano Free,
+> só para a marmitaria — assim fica de graça e separado.
+
+1. Acesse [supabase.com/dashboard](https://supabase.com/dashboard).
+2. No seletor de organização (canto superior esquerdo) → **New organization**.
+   - Nome: `Marmitas` · Plano: **Free**.
+3. Dentro dela, clique em **New project**.
+   - Nome: `marmitas` · Region: **South America (São Paulo)** · gere uma senha de banco
+     e guarde (o app não usa, mas o Supabase pede).
+4. Espere uns 2 minutos até o projeto ficar verde (*Healthy*).
+
+## Passo 2 — Criar as tabelas
+
+No projeto novo: **SQL Editor → New query** → cole o conteúdo inteiro de
+`supabase/schema.sql` → **Run**.
+
+Pode rodar de novo quantas vezes quiser, não quebra nada.
+
+## Passo 3 — Preencher o `config.js`
+
+No painel: **Project Settings → API Keys**. Copie dois valores:
+
+| No painel | No `config.js` |
+| --- | --- |
+| **Project URL** (`https://xxxx.supabase.co`) | `SUPABASE_URL` |
+| **Publishable key** (`sb_publishable_...`) — ou a **anon** legada (`eyJ...`) | `SUPABASE_KEY` |
+
+```js
+window.MARMITAS_CONFIG = {
+  SUPABASE_URL: "https://xxxxxxxxxxxx.supabase.co",
+  SUPABASE_KEY: "sb_publishable_...",
+};
+```
+
+⚠️ **Nunca** cole aqui a chave `service_role` / `secret`. Essa sim daria acesso total ao
+banco ignorando o RLS. As duas de cima são feitas para ficar no navegador.
+
+Se abrir o site sem preencher, ele mostra uma tela avisando em vez de quebrar.
+
+## Passo 4 — Travar o cadastro e criar o acesso da Márcia
+
+1. **Authentication → Sign In / Providers → Email**: deixe **Enable email provider**
+   ligado e **desligue** *Allow new users to sign up*.
+
+   Na mesma tela, deixe **Allow anonymous sign-ins** desligado. Sessão anônima também
+   recebe o papel `authenticated` — ligar isso reabriria tudo, mesmo com o cadastro
+   fechado.
+
+   > ⚠️ **Este é o passo mais importante do README.** Enquanto ele estiver ligado,
+   > qualquer pessoa que conheça a URL do projeto consegue criar uma conta chamando a
+   > API do Supabase direto — e uma conta criada assim passa pelo RLS e vê todos os
+   > dados. O bloqueio que está no código do site protege só a tela, não a API.
+   > Para conferir se está fechado, rode `./verificar-seguranca.sh`.
+2. **Authentication → Users → Add user → Create new user**: preencha o e-mail e uma
+   senha, e **marque a caixa `Auto Confirm User`**. Repita para o seu próprio e-mail.
+
+   > A caixa de confirmação automática é obrigatória. Sem ela o Supabase espera uma
+   > confirmação por e-mail que nunca vai chegar — este projeto não tem servidor de
+   > e-mail configurado — e o login falha com "Email not confirmed".
+
+3. Passe a senha para a Márcia por um canal privado (WhatsApp, pessoalmente) e peça para
+   ela trocar com você depois, se quiser. Não existe "esqueci minha senha" no app: para
+   redefinir, você entra em **Authentication → Users**, clica nos três pontinhos do
+   usuário e escolhe **Reset password** (ou apaga e recria com senha nova).
+
+Pronto: só esses dois e-mails entram.
+
+## Passo 5 — Colocar no ar (GitHub + Vercel)
+
+O repositório já existe (`github.com/leofrancisbizi/marmitas`). Com o `config.js`
+preenchido:
+
+```bash
+git add .
+git commit -m "Login por e-mail e RLS no Supabase"
+git push
+```
+
+Na [vercel.com](https://vercel.com), entrando com o GitHub: **Add New… → Project** →
+selecione o repositório → **Deploy**. A Vercel reconhece que é site estático sozinha, não
+precisa configurar nada. Em menos de um minuto sai o link
+(`https://marmitas.vercel.app` ou parecido).
+
+Daí em diante, todo `git push` publica sozinho em segundos.
+
+---
+
+## Uso no dia a dia
+
+- **Cardápio** — os combos e preços vigentes.
+- **Pedidos** — cadastrar, editar e excluir pedidos; exportar CSV.
+- **Dashboard** — faturamento, lucro, clientes recorrentes e pratos mais pedidos por
+  semana/mês/ano.
+- **Custos** — preço dos ingredientes e receita (gramas por marmita) de cada variação,
+  com o custo e a margem calculados.
+
+Os botões no topo, da esquerda para a direita: sincronizar agora, baixar backup `.json`,
+restaurar backup, **sair**.
+
+Vários dispositivos podem ficar abertos ao mesmo tempo — o que um salva aparece no outro
+sozinho, sem recarregar a página.
+
+## Backup
+
+Os dois botões de download/upload no topo exportam e importam **todos** os dados num
+arquivo `.json`. Vale como cópia de segurança e como forma de migrar para outro projeto
+Supabase no futuro. Importar **substitui** tudo o que está no banco.
 
 ## Editando o conteúdo
 
-- **Cardápio e receitas**: procure por `CARDAPIO`, `VARIACOES_MARMITAS` e `RECEITAS_SEED`
-  no `index.html` — são os dados iniciais dos pratos e receitas (usados apenas na primeira
-  vez, antes de existir nada salvo no Supabase).
-- **Preços de ingredientes**: `INGREDIENTES_SEED`, no mesmo arquivo.
-- **Cores e fontes**: variáveis CSS no topo do `<style>` (`--bg`, `--primary`, `--accent`,
-  `--font-display`, etc.).
+Tudo no `index.html`:
 
+- **Cardápio e receitas**: `CARDAPIO`, `VARIACOES_MARMITAS`, `RECEITAS_SEED`.
+- **Preços de ingredientes**: `INGREDIENTES_SEED`.
+- **Preços dos combos / frete**: `DEFAULT_CONFIG`.
+- **Cores e fontes**: as variáveis CSS no topo do `<style>` (`--bg`, `--primary`, …).
+
+Atenção: os `*_SEED` só valem na **primeira** abertura, quando o banco ainda está vazio.
+Depois disso, quem manda são os dados salvos no Supabase — ingredientes e receitas se
+editam pela própria aba **Custos** do site.
+
+## Problemas comuns
+
+| Sintoma | Causa provável |
+| --- | --- |
+| "E-mail ou senha incorretos" | Senha errada, ou o usuário não existe em Authentication → Users. |
+| "Este e-mail ainda não foi confirmado" | O usuário foi criado sem marcar `Auto Confirm User` (Passo 4). Confirme na mão pelo painel. |
+| "Muitas tentativas seguidas" | Proteção do Supabase contra força bruta. Espere um minuto. |
+| Tela "Configuração do Supabase pendente" | `config.js` em branco ou com valor errado. |
+| Entra, mas não aparece nenhum pedido | O `schema.sql` não foi rodado nesse projeto. |
+
+## Conferindo a segurança
+
+```bash
+./verificar-seguranca.sh
+```
+
+Lê as chaves do `config.js` e testa o projeto de fora, como um visitante não logado:
+se a tabela existe, se dá para ler dados sem login, se dá para escrever, e se o cadastro
+público está fechado. Vale rodar depois de qualquer mudança no painel do Supabase.

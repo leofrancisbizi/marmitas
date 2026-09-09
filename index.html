@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
 <style>
   :root{
     --bg:#F7F3E9;
@@ -104,7 +105,7 @@
   .icon-btn:hover{color:var(--ink);border-color:var(--muted);}
   .icon-btn.danger:hover{color:var(--danger);border-color:var(--danger);}
 
-  input[type=text],input[type=tel],input[type=number],input[type=date],textarea,select{
+  input[type=text],input[type=email],input[type=password],input[type=tel],input[type=number],input[type=date],textarea,select{
     width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--surface);
     font-size:13.5px;color:var(--ink);
   }
@@ -292,6 +293,21 @@
   .progress-note{font-size:12.5px;padding:9px 12px;border-radius:9px;background:var(--surface-2);margin:10px 0;text-align:center;font-weight:500;}
   .progress-note.ok{background:var(--primary-soft);color:var(--primary);}
 
+  /* ---------- login ---------- */
+  .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .auth-card{width:100%;max-width:390px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius-lg);padding:30px;box-shadow:0 10px 40px rgba(38,34,24,0.07);}
+  .auth-brand{display:flex;align-items:center;gap:11px;margin-bottom:22px;}
+  .auth-brand .brand-mark{width:38px;height:38px;border-radius:11px;background:var(--primary);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .auth-title{font-family:var(--font-display);font-size:17px;font-weight:600;}
+  .auth-sub{font-size:12px;color:var(--muted);letter-spacing:0.04em;text-transform:uppercase;}
+  .auth-msg{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px;}
+  .auth-card .btn-primary{width:100%;padding:12px;font-size:14px;}
+  .auth-erro{background:var(--danger-soft);color:var(--danger);border-radius:10px;padding:11px 14px;
+    font-size:12.5px;line-height:1.5;margin-bottom:14px;}
+  .auth-foot{font-size:11.5px;color:var(--muted);text-align:center;margin-top:18px;line-height:1.5;}
+
   .loading-screen{min-height:80vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--muted);font-size:13.5px;}
   .spinner{width:28px;height:28px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--primary);animation:spin .8s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
@@ -418,6 +434,8 @@ const ICONS = {
   chevR:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>',
   bell:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>',
   refresh:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 10-2.6 6.4M21 12V6m0 6h-6"/></svg>',
+  logout:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>',
+  mail:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 6 10-6"/></svg>',
 };
 function icon(name){ return ICONS[name] || ""; }
 
@@ -434,6 +452,9 @@ let state = {
 let ui = {
   tab: "cardapio",
   loading: true,
+  authStatus: "verificando",  // verificando | deslogado | logado
+  authEmail: "",
+  authErro: null,
   storageOk: true,
   setupNeeded: false,
   setupError: null,
@@ -452,16 +473,83 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 
 /* =========================================================
    SUPABASE — configuração
-   Preencha com os dados do SEU projeto (Project Settings → API no painel do Supabase).
-   A "anon key" é pública por natureza (fica visível no código do site) — não é a service_role key.
+   Os valores ficam no arquivo config.js, fora deste arquivo.
+   A chave publishable/anon é pública por natureza (fica visível no
+   navegador) — quem protege os dados é o login + as policies de RLS
+   (veja supabase/schema.sql). Nunca use aqui a chave service_role.
    ========================================================= */
-const SUPABASE_URL = "SUA_SUPABASE_URL_AQUI";
-const SUPABASE_ANON_KEY = "SUA_SUPABASE_ANON_KEY_AQUI";
-const SUPABASE_CONFIGURADO = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
+const CFG = window.MARMITAS_CONFIG || {};
+const SUPABASE_URL = CFG.SUPABASE_URL || "";
+const SUPABASE_KEY = CFG.SUPABASE_KEY || "";
+const SUPABASE_CONFIGURADO = SUPABASE_URL.startsWith("http") && SUPABASE_KEY.length > 20;
 
 let supa = null;
 if(SUPABASE_CONFIGURADO && window.supabase){
-  supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}
+
+/* =========================================================
+   AUTENTICAÇÃO (link mágico por e-mail)
+   Só entra quem já tem conta criada no painel do Supabase:
+   shouldCreateUser:false impede que um estranho se cadastre sozinho.
+   ========================================================= */
+function mensagemErroLogin(e){
+  const m = String((e && e.message) || e || "").toLowerCase();
+  if(m.includes("invalid login credentials") || m.includes("invalid credentials"))
+    return "E-mail ou senha incorretos.";
+  if(m.includes("email not confirmed"))
+    return "Este e-mail ainda não foi confirmado. Peça para o administrador confirmar a conta no painel do Supabase.";
+  if(m.includes("user not found"))
+    return "Este e-mail não tem acesso ao sistema.";
+  if(m.includes("rate limit") || m.includes("too many") || m.includes("for security purposes"))
+    return "Muitas tentativas seguidas. Espere um minuto e tente de novo.";
+  if(m.includes("failed to fetch") || m.includes("network"))
+    return "Sem conexão com o servidor. Verifique sua internet e tente de novo.";
+  return "Não foi possível entrar. Tente de novo em instantes.";
+}
+
+async function entrar(){
+  const campoEmail = document.getElementById("auth-email");
+  const campoSenha = document.getElementById("auth-senha");
+  const email = String((campoEmail ? campoEmail.value : ui.authEmail) || "").trim().toLowerCase();
+  const senha = campoSenha ? campoSenha.value : "";
+
+  if(!email || !email.includes("@")){ ui.authErro = "Digite um e-mail válido."; render(); return; }
+  if(!senha){ ui.authErro = "Digite sua senha."; render(); return; }
+
+  ui.authEmail = email;
+  ui.authErro = null;
+
+  // Não re-renderiza aqui: isso apagaria a senha já digitada.
+  const botao = document.querySelector('[data-action="login-entrar"]');
+  if(botao){ botao.disabled = true; botao.textContent = "Entrando…"; }
+
+  try{
+    const { error } = await supa.auth.signInWithPassword({ email, password: senha });
+    if(error) throw error;
+    // onAuthStateChange cuida de carregar os dados.
+  }catch(e){
+    ui.authErro = mensagemErroLogin(e);
+    render();
+  }
+}
+
+async function sair(){
+  if(!confirm("Deseja sair do sistema?")) return;
+  pararRealtimeSync();
+  try{ await supa.auth.signOut(); }catch(e){ /* a limpeza local já basta */ }
+}
+
+function aoSair(){
+  dadosCarregados = false;
+  state.pedidos = [];
+  ui.tab = "cardapio";
+  ui.modal = null;
+  ui.loading = false;
+  ui.authStatus = "deslogado";
+  ui.authEmail = "";
+  ui.authErro = null;
+  render();
 }
 
 async function persistPedidos(){
@@ -494,7 +582,9 @@ async function loadPrefs(){
   }catch(e){ /* usa o padrão */ }
 }
 
-async function loadAll(){
+let dadosCarregados = false;
+
+async function boot(){
   await loadPrefs();
 
   if(!SUPABASE_CONFIGURADO){
@@ -510,6 +600,36 @@ async function loadAll(){
     render();
     return;
   }
+
+  // Reage a login/logout — inclusive em outra aba do mesmo navegador.
+  supa.auth.onAuthStateChange((evento, sessao)=>{
+    if(evento === "SIGNED_OUT"){ aoSair(); return; }
+    if(sessao && !dadosCarregados){
+      dadosCarregados = true;
+      setTimeout(carregarDados, 0);
+    }
+  });
+
+  let sessao = null;
+  try{
+    const { data } = await supa.auth.getSession();
+    sessao = data.session;
+  }catch(e){ /* tratado como deslogado abaixo */ }
+
+  if(sessao){
+    if(!dadosCarregados) carregarDados();
+  }else{
+    ui.loading = false;
+    ui.authStatus = "deslogado";
+    render();
+  }
+}
+
+async function carregarDados(){
+  dadosCarregados = true;
+  ui.authStatus = "logado";
+  ui.loading = true;
+  render();
 
   try{
     const { data, error } = await supa.from("app_data").select("key,value").in("key", ["pedidos","custos"]);
@@ -540,6 +660,7 @@ async function loadAll(){
     startRealtimeSync();
   }catch(e){
     console.error("Erro ao carregar dados do Supabase", e);
+    dadosCarregados = false;
     ui.loading = false;
     ui.setupNeeded = true;
     ui.setupError = "Não foi possível conectar ao Supabase. Confira a URL/chave e se a tabela 'app_data' existe (veja o README).";
@@ -550,9 +671,17 @@ async function loadAll(){
 /* =========================================================
    SINCRONIZAÇÃO EM TEMPO REAL (Supabase Realtime)
    ========================================================= */
+let realtimeChannel = null;
+
+function pararRealtimeSync(){
+  if(realtimeChannel && supa){ supa.removeChannel(realtimeChannel); }
+  realtimeChannel = null;
+}
+
 function startRealtimeSync(){
   if(!supa) return;
-  supa.channel("app_data-changes")
+  pararRealtimeSync();
+  realtimeChannel = supa.channel("app_data-changes")
     .on("postgres_changes", { event:"*", schema:"public", table:"app_data" }, (payload)=>{
       if(ui.modal) return; // não interrompe quem está no meio de um pedido
       const row = payload.new;
@@ -735,18 +864,85 @@ function renderSetupScreen(){
       <h2 style="font-size:20px;margin-bottom:10px;">Configuração do Supabase pendente</h2>
       <p style="font-size:13.5px;color:var(--muted);line-height:1.6;margin-bottom:16px;">
         Este site precisa de um projeto Supabase para salvar os dados. Abra o arquivo
-        <code>index.html</code>, procure por <code>SUPABASE_URL</code> e
-        <code>SUPABASE_ANON_KEY</code> perto do início do <code>&lt;script&gt;</code>, e
-        preencha com os dados do seu projeto (Project Settings → API, no painel do
-        Supabase). Depois, rode o SQL de configuração da tabela — o passo a passo completo
-        está no <code>README.md</code> do projeto.
+        <code>config.js</code> e preencha <code>SUPABASE_URL</code> e
+        <code>SUPABASE_KEY</code> com os dados do seu projeto (Project Settings → API Keys,
+        no painel do Supabase). Depois, rode o arquivo <code>supabase/schema.sql</code> no
+        SQL Editor — o passo a passo completo está no <code>README.md</code> do projeto.
       </p>
       ${ui.setupError ? `<div class="banner" style="background:var(--danger-soft);color:var(--danger);">${escapeHtml(ui.setupError)}</div>` : ""}
     </div>
   </div>`;
 }
 
+function renderLoginScreen(){
+  return `
+  <div class="auth-wrap"><div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand-mark">${icon("box").replace('currentColor','#fff')}</div>
+      <div><div class="auth-title">Marcia Bizi</div><div class="auth-sub">Marmitas Fit</div></div>
+    </div>
+    <p class="auth-msg">Entre com seu e-mail e senha para acessar o sistema.</p>
+    ${ui.authErro ? `<div class="auth-erro">${escapeHtml(ui.authErro)}</div>` : ""}
+    <div class="field">
+      <label class="field-label">E-mail</label>
+      <input type="email" id="auth-email" value="${escapeAttr(ui.authEmail)}"
+             placeholder="seu@email.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label class="field-label">Senha</label>
+      <input type="password" id="auth-senha" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" data-action="login-entrar">Entrar</button>
+    <p class="auth-foot">Esqueceu a senha? Peça para o administrador redefinir.<br>Acesso restrito.</p>
+  </div></div>`;
+}
+
+function bindLoginEvents(){
+  const campoEmail = document.getElementById("auth-email");
+  const campoSenha = document.getElementById("auth-senha");
+  if(campoEmail){
+    campoEmail.addEventListener("input",()=>{ ui.authEmail = campoEmail.value; });
+    campoEmail.addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); (campoSenha||{focus(){}}).focus(); } });
+  }
+  if(campoSenha){
+    campoSenha.addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); entrar(); } });
+  }
+  // foco em quem falta preencher
+  setTimeout(()=>{ const alvo = (ui.authEmail && campoSenha) ? campoSenha : campoEmail; if(alvo) alvo.focus(); }, 0);
+  document.querySelectorAll("[data-action]").forEach(el=>{
+    if(el._bound) return;
+    el._bound = true;
+    el.addEventListener("click",()=>{
+      if(el.hasAttribute("disabled")) return;
+      handleAction(el.getAttribute("data-action"), el);
+    });
+  });
+}
+
+// render() recria o DOM inteiro a cada chamada — inclusive a cada tecla digitada
+// nos campos do modal. Sem isto o input em foco é destruído no meio da digitação e
+// o cursor volta para o começo. Guarda quem estava focado e devolve depois.
 function render(){
+  const ativo = document.activeElement;
+  const focoId = (ativo && ativo.id) || null;
+  let selIni = null, selFim = null;
+  if(focoId){
+    // campos number/date/email não expõem seleção em alguns navegadores
+    try{ selIni = ativo.selectionStart; selFim = ativo.selectionEnd; }catch(e){}
+  }
+
+  renderDOM();
+
+  if(!focoId) return;
+  const novo = document.getElementById(focoId);
+  if(!novo || novo === document.activeElement) return;
+  novo.focus();
+  if(selIni !== null){
+    try{ novo.setSelectionRange(selIni, selFim); }catch(e){}
+  }
+}
+
+function renderDOM(){
   const app = document.getElementById("app");
   if(ui.loading){
     app.innerHTML = `<div class="loading-screen"><div class="spinner"></div><p>Carregando dados da marmitaria…</p></div>`;
@@ -754,6 +950,11 @@ function render(){
   }
   if(ui.setupNeeded){
     app.innerHTML = renderSetupScreen();
+    return;
+  }
+  if(ui.authStatus !== "logado"){
+    app.innerHTML = renderLoginScreen();
+    bindLoginEvents();
     return;
   }
   app.innerHTML = `
@@ -823,6 +1024,7 @@ function renderTopbar(){
       <button class="icon-btn" data-action="exportar-backup" title="Baixar backup dos dados">${icon("download")}</button>
       <input type="file" id="import-file-input" accept="application/json" style="display:none;">
       <button class="icon-btn" data-action="importar-backup" title="Restaurar a partir de um backup">${icon("upload")}</button>
+      <button class="icon-btn" data-action="sair" title="Sair do sistema">${icon("logout")}</button>
       <button class="btn-cta" data-action="novo-pedido">${icon("plus")}Novo pedido</button>
     </div>
   </div>`;
@@ -1339,10 +1541,7 @@ function bindGlobalEvents(){
   if(search){
     search.addEventListener("input", ()=>{
       ui.ingredienteSearch = search.value;
-      const pos = search.selectionStart;
       render();
-      const el2 = document.getElementById("ingr-search");
-      if(el2){ el2.focus(); el2.setSelectionRange(pos,pos); }
     });
   }
 
@@ -1369,8 +1568,7 @@ function syncDraftFromForm(skipRender){
 }
 
 function updateFooterOnly(){
-  const val = document.querySelector(".modal-foot")?.previousElementSibling?.querySelector(".mono");
-  // simplest reliable approach: just re-render whole modal (cheap enough)
+  // re-renderiza tudo para recalcular o total; render() cuida de manter o foco
   const scrollPos = document.querySelector(".modal-body")?.scrollTop || 0;
   render();
   const mb = document.querySelector(".modal-body");
@@ -1382,6 +1580,8 @@ async function handleAction(action, el, e){
     case "tab": ui.tab = el.getAttribute("data-tab"); render(); break;
     case "novo-pedido": openModal("novo"); break;
     case "sync-agora": await syncFromStorage(true); break;
+    case "login-entrar": await entrar(); break;
+    case "sair": await sair(); break;
     case "exportar-backup": exportarBackup(); break;
     case "importar-backup": document.getElementById("import-file-input").click(); break;
     case "editar-pedido": {
@@ -1571,7 +1771,7 @@ function exportarCSV(){
 /* =========================================================
    INIT
    ========================================================= */
-loadAll();
+boot();
 </script>
 </body>
 </html>
